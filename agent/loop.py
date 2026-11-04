@@ -6,6 +6,7 @@
 没有魔法。框架（第 5 篇的 LangGraph）封装的也是这个东西。
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from openai import OpenAI
@@ -34,11 +35,19 @@ class AgentResult:
     events: list[str] = field(default_factory=list)
 
 
-def run_agent(client: OpenAI, user_message: str, max_steps: int = MAX_STEPS) -> AgentResult:
+def run_agent(
+    client: OpenAI,
+    user_message: str,
+    max_steps: int = MAX_STEPS,
+    on_event: Callable[[str], None] | None = None,
+) -> AgentResult:
     """跑一轮完整对话：从用户消息出发，直到模型给出最终答复。
 
     核心结构就是文章里那张"10 行伪代码"的真身：
     for 每一步: 问模型 -> 要工具就给工具 -> 不要工具就是最终答案。
+
+    on_event：过程事件的实时回调（每一步"思考中/用工具"都会即时上报）。
+    demo 靠它做终端演出，生产上你可以拿它接日志/埋点——观测从第一天就该有。
     """
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -46,7 +55,13 @@ def run_agent(client: OpenAI, user_message: str, max_steps: int = MAX_STEPS) -> 
     ]
     events: list[str] = []
 
+    def emit(event: str) -> None:
+        events.append(event)
+        if on_event is not None:
+            on_event(event)
+
     for step in range(1, max_steps + 1):
+        emit(f"[第{step}步] 把笔记递给大脑，思考中……")
         resp = client.chat.completions.create(
             model=MODEL_NAME,
             messages=messages,  # type: ignore[arg-type]  # openai 库接受 TypedDict 列表，运行时合法
@@ -62,7 +77,7 @@ def run_agent(client: OpenAI, user_message: str, max_steps: int = MAX_STEPS) -> 
         messages.append({"role": "assistant", "content": msg.content, "tool_calls": msg.tool_calls})
         for call in msg.tool_calls:
             result = dispatch_tool(call.function.name, call.function.arguments)
-            events.append(f"[第{step}步] 使用工具 {call.function.name}({call.function.arguments}) -> {result[:80]}")
+            emit(f"[第{step}步] 刷工牌：{call.function.name}({call.function.arguments}) -> {result[:60]}")
             messages.append(
                 {
                     "role": "tool",

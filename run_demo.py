@@ -21,15 +21,14 @@ def main() -> None:
     print("星辰优品 · 智能客服工单演示（v0.1 裸 SDK 手写循环）")
     print("=" * 52)
     print(f"\n[工单] {DEMO_TICKET}\n")
-    print("-" * 52)
 
-    result = run_agent(client, DEMO_TICKET)
+    # 实时事件回调：循环每走一步，这里立刻打印一行——
+    # 终端演示（GIF）要的"过程感"就来自它
+    result = run_agent(client, DEMO_TICKET, on_event=lambda e: print(e, flush=True))
 
-    for event in result.events:
-        print(event)
     print("-" * 52)
     print(f"\n[小星的答复]\n{result.answer}\n")
-    print(f"[过程] 共使用 {result.steps_used} 轮循环，{len(result.events)} 次工具调用")
+    print(f"[过程] 共 {result.steps_used} 轮循环")
 
 
 if __name__ == "__main__":
